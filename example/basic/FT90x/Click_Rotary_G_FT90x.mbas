@@ -1,0 +1,118 @@
+'
+'Example for Rotary_G Click
+'
+'    Date          : Jul 2018.
+'    Author        : Nenad Filipovic
+'
+'Test configuration FT90x :
+'    
+'    MCU                : FT900
+'    Dev. Board         : EasyFT90x v7 
+'    FT90x Compiler ver : v2.2.1.0
+'
+'---
+'
+'Description :
+'
+'The application is composed of three sections :
+'
+'- System Initialization - Initializes peripherals and set pins.
+'- Application Initialization - Initializes SPI driver, set initial states, set RST logic high and performs device configuration.
+'- Application Task - (code snippet) Show functionality of Rotary_G Click, rotating and turn on/off led's, using the SPI interface
+'
+'Additional Functions :
+'
+'- SPI
+'
+'
+program Click_Rotary_G_FT90x
+
+include Click_Rotary_G_types
+include Click_Rotary_G_config
+
+dim
+    startStatus as uint8_t 
+    stateOld as uint8_t 
+    stateNew as uint8_t 
+    stateOldRotate as uint8_t 
+    stateNewRotate as uint8_t 
+    ledState as uint8_t 
+    ledData as uint16_t 
+    
+sub procedure systemInit() 
+
+    mikrobus_gpioInit(_MIKROBUS1, _MIKROBUS_PWM_PIN, _GPIO_INPUT) 
+    mikrobus_gpioInit(_MIKROBUS1, _MIKROBUS_INT_PIN, _GPIO_INPUT) 
+    mikrobus_gpioInit(_MIKROBUS1, _MIKROBUS_AN_PIN, _GPIO_INPUT) 
+    mikrobus_gpioInit(_MIKROBUS1, _MIKROBUS_RST_PIN, _GPIO_OUTPUT) 
+    mikrobus_gpioInit(_MIKROBUS1, _MIKROBUS_CS_PIN, _GPIO_OUTPUT) 
+    mikrobus_spiInit(_MIKROBUS1, @_ROTARYG_SPI_CFG[0]) 
+    Delay_100ms() 
+
+end sub
+
+sub procedure applicationInit() 
+
+    rotaryg_spiDriverInit(T_ROTARYG_P(@_MIKROBUS1_GPIO), T_ROTARYG_P(@_MIKROBUS1_SPI)) 
+    ledData = 0x0001 
+    stateOld = 0 
+    stateNew = 1 
+    stateOldRotate = 0 
+    stateNewRotate = 1 
+
+end sub
+
+sub procedure applicationTask() 
+
+    rotaryg_turnOnLedByData(ledData) 
+    if (rotaryg_buttonPush()) then 
+        stateNew = 1 
+        if (((stateNew = 1) and (stateOld = 0))) then 
+            stateOld = 1 
+            ledState = ((ledState + 1) mod 5) 
+            if ((ledState = 4)) then 
+                for stateOld = 0 to 17-1
+                    rotaryg_turnOnLedByData(0xAAAA) 
+                    Delay_100ms() 
+                    rotaryg_turnOnLedByData(0x5555) 
+                    Delay_100ms() 
+                next stateOld
+                for stateOld = 0 to 17-1
+                    rotaryg_turnOnLedByPosition(stateOld) 
+                    Delay_100ms() 
+                next stateOld
+                ledState = 0 
+                ledData = rotaryg_getLedData(ledState) 
+            else 
+                ledData = rotaryg_getLedData(ledState) 
+            end if
+        end if
+    else 
+        stateOld = 0 
+    end if
+    if ((rotaryg_getPWMstate() = rotaryg_getANstate())) then 
+        stateOldRotate = 0 
+        startStatus = (rotaryg_getPWMstate() and rotaryg_getANstate()) 
+    else 
+        stateNewRotate = 1 
+        if ((stateNewRotate <> stateOldRotate)) then 
+            stateOldRotate = 1 
+            if ((startStatus <> rotaryg_getPWMstate())) then 
+                ledData = ((ledData << 1) or (ledData >> 15)) 
+            else 
+                ledData = ((ledData >> 1) or (ledData << 15)) 
+            end if
+        end if
+    end if
+
+end sub
+
+main :
+
+    systemInit() 
+    applicationInit() 
+    while (1) 
+        applicationTask() 
+    wend
+
+end.
